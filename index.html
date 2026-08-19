@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EHS 現場安全稽核系統</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f0f2f5; padding-bottom: 70px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+        .card { margin-bottom: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: none; }
+        .checklist-item { border-left: 6px solid #0d6efd; padding: 15px; background: #fff; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .na-mode { border-left: 6px solid #adb5bd; background: #f8f9fa; opacity: 0.7; }
+        .category-title { font-weight: bold; color: #495057; border-bottom: 2px solid #dee2e6; padding-bottom: 5px; margin-top: 25px; margin-bottom: 15px; }
+        
+        .counter-group { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .counter-btn { width: 50px; height: 50px; border-radius: 50%; font-size: 24px; font-weight: bold; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+        .counter-input { width: 70px; height: 50px; text-align: center; font-size: 20px; font-weight: bold; border: none; background: transparent; }
+        
+        #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+    </style>
+</head>
+<body>
+
+    <div id="loader">
+        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+        <h4 class="mt-3 text-secondary">系統載入中...</h4>
+    </div>
+
+    <div class="container mt-4">
+        <h3 class="text-center mb-4 fw-bold" style="color: #0d6efd;">台北港作業安全行為觀察</h3>
+
+        <!-- 第一區：稽核員身分 -->
+        <div class="card">
+            <div class="card-header bg-primary text-white fw-bold">1. 稽核員身分</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label text-secondary fw-bold">工號 (輸入後自動帶出資料)</label>
+                    <!-- 🌟 修正：改回 type="text" 允許輸入英數混合工號 -->
+                    <input type="text" id="auditorId" class="form-control form-control-lg" placeholder="例: T113031">
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-4"><input type="text" id="auditorName" class="form-control bg-light" readonly placeholder="姓名"></div>
+                    <div class="col-4"><input type="text" id="auditorCompany" class="form-control bg-light" readonly placeholder="公司"></div>
+                    <div class="col-4"><input type="text" id="auditorDept" class="form-control bg-light" readonly placeholder="單位"></div>
+                </div>
+                <input type="hidden" id="auditorCommittee">
+                
+                <label class="form-label text-secondary fw-bold mt-2">您的觀察層級</label>
+                <div class="d-flex flex-wrap gap-2">
+                    <input type="radio" class="btn-check" name="obsLevel" id="level1" value="現場主管">
+                    <label class="btn btn-outline-primary flex-fill" for="level1">現場主管</label>
+                    <input type="radio" class="btn-check" name="obsLevel" id="level2" value="幹部">
+                    <label class="btn btn-outline-primary flex-fill" for="level2">幹部</label>
+                    <input type="radio" class="btn-check" name="obsLevel" id="level3" value="資深人員">
+                    <label class="btn btn-outline-primary flex-fill" for="level3">資深</label>
+                    <input type="radio" class="btn-check" name="obsLevel" id="level4" value="資淺人員">
+                    <label class="btn btn-outline-primary flex-fill" for="level4">資淺</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- 第二區：稽核目標 -->
+        <div class="card">
+            <div class="card-header bg-success text-white fw-bold">2. 觀察目標</div>
+            <div class="card-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label text-secondary fw-bold">受查公司</label>
+                        <select id="observedCompany" class="form-select form-select-lg"><option value="">選擇公司</option></select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label text-secondary fw-bold">受查單位</label>
+                        <select id="observedDept" class="form-select form-select-lg"><option value="">請先選公司</option></select>
+                    </div>
+                </div>
+                
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label text-secondary fw-bold">港區</label>
+                        <select id="siteSelect" class="form-select form-select-lg"><option value="">選擇港區</option></select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label text-secondary fw-bold">地點</label>
+                        <select id="locationSelect" class="form-select form-select-lg"><option value="">請先選港區</option></select>
+                        <input type="hidden" id="locationCategory"> 
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label text-secondary fw-bold">作業別 (單選)</label>
+                    <div id="operationTypeRadios" class="p-3 bg-light rounded border border-light-subtle d-flex flex-wrap gap-2">
+                        <span class="text-muted small">請先選擇地點，系統將自動帶出可用作業別。</span>
+                    </div>
+                </div>
+                <button id="generateBtn" class="btn btn-dark w-100 btn-lg mt-2 fw-bold">開始載入查核清單</button>
+            </div>
+        </div>
+
+        <!-- 第三區：查核清單 -->
+        <div id="checklistContainer" class="d-none">
+            <h4 class="mb-2 text-danger fw-bold border-bottom border-danger pb-2">3. 現場查核</h4>
+            <div class="alert alert-warning fw-bold small">⚠️ 每項作業觀察次數 (遵守+未遵守) 合計必須達 10 次以上，或勾選 N/A 不適用。</div>
+            <div id="checklistItems"></div>
+            <button id="submitBtn" class="btn btn-danger w-100 btn-lg mt-4 mb-5 fw-bold shadow">確認無誤，送出稽核單</button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // ⚙️ 系統設定區
+        // ==========================================
+        const API_URL = "https://script.google.com/macros/s/AKfycbzfVa6cW3j5yZUbI3h55l84d3KGLnQUcXCiB3wLmC3FkjA4GkK1E4XngaMWmoq4cZvk/exec";
+        
+        const SHOW_ITEM_CODE = false; 
+        
+        let configData = {}; 
+        let currentLocationsMap = {}; 
+
+        // ==========================================
+        // 初始化與載入
+        // ==========================================
+        window.onload = async function() {
+            try {
+                const response = await fetch(API_URL);
+                const result = await response.json();
+                if (result.status === 'success') {
+                    configData = result.data;
+                    initForm();
+                } else alert("載入失敗: " + result.message);
+            } catch (error) {
+                alert("網路異常，請重整網頁。");
+            } finally {
+                document.getElementById('loader').style.display = 'none';
+            }
+        };
+
+        function initForm() {
+            const compSelect = document.getElementById('observedCompany');
+            Object.keys(configData.targets).forEach(comp => {
+                compSelect.add(new Option(comp, comp));
+            });
+
+            const siteSelect = document.getElementById('siteSelect');
+            Object.keys(configData.locations).forEach(site => {
+                siteSelect.add(new Option(site, site));
+            });
+        }
+
+        // ==========================================
+        // 互動邏輯 (連動選單)
+        // ==========================================
+        
+        document.getElementById('auditorId').addEventListener('blur', function() {
+            const empId = this.value.trim();
+            const empInfo = configData.employees[empId];
+            if (empInfo) {
+                document.getElementById('auditorName').value = empInfo.name;
+                document.getElementById('auditorCompany').value = empInfo.company;
+                document.getElementById('auditorDept').value = empInfo.department;
+                document.getElementById('auditorCommittee').value = empInfo.committee; 
+            } else if (empId !== "") {
+                alert("查無此工號！");
+                ['auditorName','auditorCompany','auditorDept','auditorCommittee'].forEach(id => document.getElementById(id).value = "");
+            }
+        });
+
+        document.getElementById('observedCompany').addEventListener('change', function() {
+            const comp = this.value;
+            const deptSelect = document.getElementById('observedDept');
+            deptSelect.innerHTML = '<option value="">選擇單位</option>';
+            if (comp && configData.targets[comp]) {
+                configData.targets[comp].forEach(dept => {
+                    deptSelect.add(new Option(dept, dept));
+                });
+            }
+        });
+
+        document.getElementById('siteSelect').addEventListener('change', function() {
+            const site = this.value;
+            const locSelect = document.getElementById('locationSelect');
+            locSelect.innerHTML = '<option value="">選擇地點</option>';
+            currentLocationsMap = {};
+            document.getElementById('operationTypeRadios').innerHTML = '<span class="text-muted small">請選擇地點以載入作業別</span>';
+            
+            if (site && configData.locations[site]) {
+                configData.locations[site].forEach(locObj => {
+                    locSelect.add(new Option(locObj.name, locObj.name));
+                    currentLocationsMap[locObj.name] = { 
+                        category: locObj.category, 
+                        allowedOps: locObj.allowedOps 
+                    }; 
+                });
+            }
+        });
+
+        document.getElementById('locationSelect').addEventListener('change', function() {
+            const locInfo = currentLocationsMap[this.value];
+            if (!locInfo) return;
+
+            document.getElementById('locationCategory').value = locInfo.category;
+            const opContainer = document.getElementById('operationTypeRadios');
+            opContainer.innerHTML = ""; 
+            
+            let allowedOps = locInfo.allowedOps.split(',').map(s => s.trim()).filter(s => s);
+
+            if (allowedOps.length === 0) {
+                opContainer.innerHTML = '<span class="text-danger small">此地點設定檔未配置作業別，請洽管理員。</span>';
+                return;
+            }
+
+            allowedOps.forEach((op, index) => {
+                const isChecked = allowedOps.length === 1 ? 'checked' : '';
+                opContainer.insertAdjacentHTML('beforeend', `
+                    <input type="radio" class="btn-check op-radio" name="opTypeRadio" id="op_${index}" value="${op}" ${isChecked}>
+                    <label class="btn btn-outline-primary" for="op_${index}">${op}</label>
+                `);
+            });
+        });
+
+        // ==========================================
+        // 產生查核清單 (🌟 已移除地點大類雙重過濾，改為單純作業別過濾)
+        // ==========================================
+        document.getElementById('generateBtn').addEventListener('click', function() {
+            const checkedOpObj = document.querySelector('input[name="opTypeRadio"]:checked'); 
+            
+            if (!document.getElementById('locationCategory').value) return alert("請先選擇地點！");
+            if (!checkedOpObj) return alert("請選擇一項作業別！");
+
+            const selectedOp = checkedOpObj.value;
+
+            // 🌟 單一過濾：只要該題目的適用作業別包含我們選的作業，就直接出題！
+            let filtered = configData.checklists.filter(q => {
+                return q.applyToOps.includes(selectedOp);
+            });
+            
+            if (filtered.length === 0) return alert(`目前選擇條件無對應題庫。`);
+
+            const grouped = {};
+            filtered.forEach(q => {
+                if (!grouped[q.category]) grouped[q.category] = [];
+                grouped[q.category].push(q);
+            });
+
+            renderChecklist(grouped);
+        });
+
+        function renderChecklist(groupedQuestions) {
+            const container = document.getElementById('checklistItems');
+            container.innerHTML = ""; 
+            let questionCounter = 1;
+
+            for (const [category, questions] of Object.entries(groupedQuestions)) {
+                container.insertAdjacentHTML('beforeend', `<h5 class="category-title">📌 ${category}</h5>`);
+
+                questions.forEach((q) => {
+                    const idx = questionCounter;
+                    const codeDisplay = SHOW_ITEM_CODE && q.itemCode ? `<span class="text-primary">[${q.itemCode}]</span> ` : "";
+                    
+                    const html = `
+                        <div class="checklist-item" id="item-${idx}">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="fw-bold mb-0 lh-base" style="font-size: 1.1rem;">
+                                    ${idx}. ${codeDisplay}${q.itemDesc}
+                                </h6>
+                                <div class="form-check form-switch ms-2">
+                                    <input class="form-check-input na-toggle" type="checkbox" style="transform: scale(1.3);" data-idx="${idx}">
+                                    <label class="form-check-label text-secondary small ms-1 fw-bold">N/A</label>
+                                </div>
+                            </div>
+                            
+                            <input type="hidden" class="item-category" value="${category}">
+                            <input type="hidden" class="item-code" value="${q.itemCode || ''}">
+                            <input type="hidden" class="item-desc" value="${q.itemDesc}">
+                            
+                            <div class="counter-container mt-3" id="counters-${idx}">
+                                <div class="counter-group bg-light rounded-pill px-2 py-1 border border-success border-opacity-50">
+                                    <span class="ms-2 fw-bold text-success">遵守次數</span>
+                                    <div class="d-flex align-items-center">
+                                        <button class="btn btn-outline-success counter-btn btn-minus" type="button" onclick="adjustCount(${idx}, 'total', -1)">-</button>
+                                        <input type="number" class="counter-input text-success total-count" id="total-${idx}" value="0" readonly>
+                                        <button class="btn btn-success counter-btn btn-plus shadow-sm" type="button" onclick="adjustCount(${idx}, 'total', 1)">+</button>
+                                    </div>
+                                </div>
+                                <div class="counter-group bg-light rounded-pill px-2 py-1 mt-2 border border-danger border-opacity-50">
+                                    <span class="ms-2 fw-bold text-danger">未遵守次數</span>
+                                    <div class="d-flex align-items-center">
+                                        <button class="btn btn-outline-danger counter-btn btn-minus" type="button" onclick="adjustCount(${idx}, 'fail', -1)">-</button>
+                                        <input type="number" class="counter-input text-danger fail-count" id="fail-${idx}" value="0" readonly>
+                                        <button class="btn btn-danger counter-btn btn-plus shadow-sm" type="button" onclick="adjustCount(${idx}, 'fail', 1)">+</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mt-3 evidence-group d-none" id="evidence-${idx}">
+                                <div class="alert alert-danger py-2 px-3 mb-2"><small class="fw-bold">⚠️ 偵測到違規，請務必填寫備註</small></div>
+                                <input type="text" class="form-control note-input mb-2 border-danger" placeholder="[必填] 車號 / 特徵 / 違規狀況描述">
+                            </div>
+                        </div>
+                    `;
+                    container.insertAdjacentHTML('beforeend', html);
+                    questionCounter++;
+                });
+            }
+            document.getElementById('checklistContainer').classList.remove('d-none');
+            bindNAEvents();
+        }
+
+        window.adjustCount = function(idx, type, change) {
+            const isNA = document.querySelector(`.na-toggle[data-idx="${idx}"]`).checked;
+            if (isNA) return; 
+
+            const input = document.getElementById(`${type}-${idx}`);
+            let newVal = parseInt(input.value) + change;
+            if (newVal < 0) newVal = 0; 
+            input.value = newVal;
+
+            if (type === 'fail') {
+                const evidenceDiv = document.getElementById(`evidence-${idx}`);
+                if (newVal > 0) evidenceDiv.classList.remove('d-none');
+                else evidenceDiv.classList.add('d-none');
+            }
+        };
+
+        function bindNAEvents() {
+            document.querySelectorAll('.na-toggle').forEach(toggle => {
+                toggle.addEventListener('change', function() {
+                    const idx = this.getAttribute('data-idx');
+                    const itemDiv = document.getElementById(`item-${idx}`);
+                    const totalInput = document.getElementById(`total-${idx}`);
+                    const failInput = document.getElementById(`fail-${idx}`);
+                    const evidenceDiv = document.getElementById(`evidence-${idx}`);
+                    
+                    if (this.checked) {
+                        itemDiv.classList.add('na-mode');
+                        totalInput.value = 0;
+                        failInput.value = 0;
+                        evidenceDiv.classList.add('d-none');
+                    } else {
+                        itemDiv.classList.remove('na-mode');
+                    }
+                });
+            });
+        }
+
+        // ==========================================
+        // 🌟 送出表單 (10次防呆驗證)
+        // ==========================================
+        document.getElementById('submitBtn').addEventListener('click', async function() {
+            const obsLevelObj = document.querySelector('input[name="obsLevel"]:checked');
+            const checkedOpObj = document.querySelector('input[name="opTypeRadio"]:checked');
+            
+            const payload = {
+                auditorId: document.getElementById('auditorId').value,
+                auditorName: document.getElementById('auditorName').value,
+                auditorCompany: document.getElementById('auditorCompany').value,
+                auditorDept: document.getElementById('auditorDept').value,
+                auditorCommittee: document.getElementById('auditorCommittee').value,
+                auditorObsLevel: obsLevelObj ? obsLevelObj.value : "",
+                
+                observedCompany: document.getElementById('observedCompany').value,
+                observedDept: document.getElementById('observedDept').value,
+                location: document.getElementById('locationSelect').value,
+                locationCategory: document.getElementById('locationCategory').value,
+                operationType: checkedOpObj ? checkedOpObj.value : "",
+                details: []
+            };
+
+            if (!payload.auditorName || !payload.auditorObsLevel || !payload.observedCompany || !payload.observedDept || !payload.location || !payload.operationType) {
+                return alert("請確認上方【1. 稽核員身分】與【2. 觀察目標】所有欄位皆已選妥！");
+            }
+
+            let hasError = false;
+            let errorMessage = "";
+
+            document.querySelectorAll('.checklist-item').forEach(item => {
+                if (hasError) return; 
+
+                const isNA = item.querySelector('.na-toggle').checked;
+                const total = parseInt(item.querySelector('.total-count').value);
+                const fail = parseInt(item.querySelector('.fail-count').value);
+                const sum = total + fail;
+                const note = item.querySelector('.note-input').value;
+                const desc = item.querySelector('.item-desc').value;
+
+                if (!isNA) {
+                    if (sum < 10) {
+                        errorMessage = `🚨 觀察樣本數不足！\n\n項目：「${desc}」\n目前合計僅觀察 ${sum} 次。\n(規定：遵守 + 未遵守必須 ≥ 10 次，若現場無此情境請勾選 N/A)`;
+                        hasError = true;
+                        return;
+                    }
+                    if (fail > 0 && note.trim() === "") {
+                        errorMessage = `🚨 違規未舉證！\n\n項目：「${desc}」發生未遵守情形，請務必於下方填寫缺失備註。`;
+                        hasError = true;
+                        return;
+                    }
+                }
+
+                payload.details.push({
+                    category: item.querySelector('.item-category').value,
+                    itemCode: item.querySelector('.item-code').value,
+                    itemDesc: desc,
+                    isNA: isNA,
+                    totalCount: isNA ? 0 : total,
+                    failCount: isNA ? 0 : fail,
+                    note: isNA ? "" : note,
+                    photoUrl: "" 
+                });
+            });
+
+            if (hasError) return alert(errorMessage);
+
+            this.disabled = true;
+            this.textContent = "資料寫入資料庫中，請稍候...";
+
+            try {
+                const response = await fetch(API_URL, { method: "POST", body: JSON.stringify(payload) });
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    alert(`✅ 稽核送出成功！\n系統單號：${result.auditId}`);
+                    window.location.reload(); 
+                } else {
+                    alert("寫入失敗：" + result.message);
+                    this.disabled = false;
+                    this.textContent = "確認無誤，送出稽核單";
+                }
+            } catch (error) {
+                alert("傳送發生錯誤，請檢查網路連線。");
+                this.disabled = false;
+                this.textContent = "確認無誤，送出稽核單";
+            }
+        });
+    </script>
+</body>
+</html>
