@@ -8,7 +8,7 @@
     <style>
         body { background-color: #f0f2f5; padding-bottom: 70px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
         .card { margin-bottom: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: none; }
-        .checklist-item { border-left: 6px solid #0d6efd; padding: 15px; background: #fff; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .checklist-item { border-left: 6px solid #0d6efd; padding: 15px; background: #fff; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: border 0.3s, box-shadow 0.3s; }
         .na-mode { border-left: 6px solid #adb5bd; background: #f8f9fa; opacity: 0.7; }
         .category-title { font-weight: bold; color: #495057; border-bottom: 2px solid #dee2e6; padding-bottom: 5px; margin-top: 25px; margin-bottom: 15px; }
         
@@ -17,6 +17,9 @@
         .counter-input { width: 70px; height: 50px; text-align: center; font-size: 20px; font-weight: bold; border: none; background: transparent; }
         
         #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        
+        /* 🌟 離線暫存提示列專屬樣式 */
+        #offlineBanner { position: sticky; top: 10px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body>
@@ -29,14 +32,19 @@
     <div class="container mt-4">
         <h3 class="text-center mb-4 fw-bold" style="color: #0d6efd;">台北港作業安全行為觀察</h3>
 
+        <!-- 🌟 離線暫存提示列 (預設隱藏) -->
+        <div id="offlineBanner" class="alert alert-info d-none mb-4 fw-bold d-flex justify-content-between align-items-center">
+            <span>📡 有 <span id="offlineCount" class="text-danger fs-5">0</span> 筆離線單未上傳</span>
+            <button id="syncBtn" class="btn btn-primary fw-bold px-3">立即上傳</button>
+        </div>
+
         <!-- 第一區：稽核員身分 -->
         <div class="card">
             <div class="card-header bg-primary text-white fw-bold">1. 稽核員身分</div>
             <div class="card-body">
                 <div class="mb-3">
                     <label class="form-label text-secondary fw-bold">工號 (輸入後自動帶出資料)</label>
-                    <!-- 🌟 修正：改回 type="text" 允許輸入英數混合工號 -->
-                    <input type="text" id="auditorId" class="form-control form-control-lg" placeholder="例: T113031">
+                    <input type="text" id="auditorId" class="form-control form-control-lg" placeholder="例: A10001">
                 </div>
                 <div class="row g-2 mb-3">
                     <div class="col-4"><input type="text" id="auditorName" class="form-control bg-light" readonly placeholder="姓名"></div>
@@ -110,6 +118,7 @@
         // ⚙️ 系統設定區
         // ==========================================
         const API_URL = "https://script.google.com/macros/s/AKfycbzfVa6cW3j5yZUbI3h55l84d3KGLnQUcXCiB3wLmC3FkjA4GkK1E4XngaMWmoq4cZvk/exec";
+        const OFFLINE_KEY = "ehs_offline_audits"; // 離線暫存的 Key
         
         const SHOW_ITEM_CODE = false; 
         
@@ -120,6 +129,8 @@
         // 初始化與載入
         // ==========================================
         window.onload = async function() {
+            checkOfflineData(); // 🌟 檢查是否有離線暫存資料
+            
             try {
                 const response = await fetch(API_URL);
                 const result = await response.json();
@@ -128,7 +139,8 @@
                     initForm();
                 } else alert("載入失敗: " + result.message);
             } catch (error) {
-                alert("網路異常，請重整網頁。");
+                // 如果連主設定檔都載入失敗，有可能是完全斷網，也給予告知
+                alert("網路異常！無法取得最新系統設定，請於有網路環境時重整網頁。");
             } finally {
                 document.getElementById('loader').style.display = 'none';
             }
@@ -145,6 +157,67 @@
                 siteSelect.add(new Option(site, site));
             });
         }
+
+        // ==========================================
+        // 🌟 離線暫存與上傳邏輯
+        // ==========================================
+        function saveOfflineData(payload) {
+            let offlineData = JSON.parse(localStorage.getItem(OFFLINE_KEY) || "[]");
+            offlineData.push(payload);
+            localStorage.setItem(OFFLINE_KEY, JSON.stringify(offlineData));
+            checkOfflineData();
+        }
+
+        function checkOfflineData() {
+            let offlineData = JSON.parse(localStorage.getItem(OFFLINE_KEY) || "[]");
+            const banner = document.getElementById('offlineBanner');
+            if (offlineData.length > 0) {
+                document.getElementById('offlineCount').innerText = offlineData.length;
+                banner.classList.remove('d-none');
+            } else {
+                banner.classList.add('d-none');
+            }
+        }
+
+        document.getElementById('syncBtn').addEventListener('click', async function() {
+            let offlineData = JSON.parse(localStorage.getItem(OFFLINE_KEY) || "[]");
+            if (offlineData.length === 0) return;
+
+            if (!confirm(`確定要立刻上傳這 ${offlineData.length} 筆離線單嗎？\n請確認目前網路訊號良好。`)) return;
+
+            this.disabled = true;
+            this.textContent = "上傳中...";
+            
+            let successCount = 0;
+            let failCount = 0;
+            let remainingData = []; // 紀錄上傳失敗的單子
+
+            // 逐筆批次上傳
+            for (let i = 0; i < offlineData.length; i++) {
+                try {
+                    const response = await fetch(API_URL, { method: "POST", body: JSON.stringify(offlineData[i]) });
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        successCount++;
+                    } else {
+                        failCount++;
+                        remainingData.push(offlineData[i]); // 寫入失敗，保留
+                    }
+                } catch (e) {
+                    failCount++;
+                    remainingData.push(offlineData[i]); // 網路斷線，保留
+                }
+            }
+
+            // 更新暫存庫
+            localStorage.setItem(OFFLINE_KEY, JSON.stringify(remainingData));
+            checkOfflineData();
+            
+            this.disabled = false;
+            this.textContent = "立即上傳";
+            
+            alert(`🔄 離線上傳完畢！\n\n✅ 成功：${successCount} 筆\n❌ 失敗/網路異常：${failCount} 筆`);
+        });
 
         // ==========================================
         // 互動邏輯 (連動選單)
@@ -218,7 +291,7 @@
         });
 
         // ==========================================
-        // 產生查核清單 (🌟 已移除地點大類雙重過濾，改為單純作業別過濾)
+        // 產生查核清單 
         // ==========================================
         document.getElementById('generateBtn').addEventListener('click', function() {
             const checkedOpObj = document.querySelector('input[name="opTypeRadio"]:checked'); 
@@ -228,7 +301,6 @@
 
             const selectedOp = checkedOpObj.value;
 
-            // 🌟 單一過濾：只要該題目的適用作業別包含我們選的作業，就直接出題！
             let filtered = configData.checklists.filter(q => {
                 return q.applyToOps.includes(selectedOp);
             });
@@ -343,7 +415,7 @@
         }
 
         // ==========================================
-        // 🌟 送出表單 (10次防呆驗證 + 彙整題號報錯 + 自動跳轉)
+        // 🌟 送出表單 (防呆 + 離線偵測機制)
         // ==========================================
         document.getElementById('submitBtn').addEventListener('click', async function() {
             const obsLevelObj = document.querySelector('input[name="obsLevel"]:checked');
@@ -368,32 +440,24 @@
             // 基本資料防呆
             if (!payload.auditorName || !payload.auditorObsLevel || !payload.observedCompany || !payload.observedDept || !payload.location || !payload.operationType) {
                 alert("請確認上方【1. 稽核員身分】與【2. 觀察目標】所有欄位皆已選妥！");
+                document.getElementById('submitBtn').blur(); 
                 
-                // 🌟 關鍵修正 1：解除按鈕焦點，防止瀏覽器強制把畫面往下拉
-                document.getElementById('submitBtn').blur();
-                
-                // 🌟 關鍵修正 2：精準抓取最上方的標題元素進行滑動
                 setTimeout(() => {
-                    const topTitle = document.querySelector('h3'); // 抓取「台北港作業安全行為觀察」標題
+                    const topTitle = document.querySelector('h3'); 
                     if (topTitle) {
-                        try { 
-                            topTitle.scrollIntoView({ behavior: 'smooth', block: 'start' }); 
-                        } catch(e) { 
-                            topTitle.scrollIntoView(); 
-                        }
+                        try { topTitle.scrollIntoView({ behavior: 'smooth', block: 'start' }); } 
+                        catch(e) { topTitle.scrollIntoView(); }
                     }
                 }, 150);
-                
                 return;
             }
 
-            // 🌟 建立陣列，用來收集所有發生錯誤的「題號」與「元素」
             let insufficientItems = [];
             let missingNoteItems = [];
             let errorElements = []; 
 
             document.querySelectorAll('.checklist-item').forEach(item => {
-                const idx = item.querySelector('.na-toggle').getAttribute('data-idx'); // 抓取題號
+                const idx = item.querySelector('.na-toggle').getAttribute('data-idx'); 
                 const isNA = item.querySelector('.na-toggle').checked;
                 const total = parseInt(item.querySelector('.total-count').value);
                 const fail = parseInt(item.querySelector('.fail-count').value);
@@ -404,21 +468,10 @@
                 if (!isNA) {
                     let hasItemError = false;
                     
-                    // 檢查 1：次數不足
-                    if (sum < 10) {
-                        insufficientItems.push(idx);
-                        hasItemError = true;
-                    }
-                    // 檢查 2：有缺失但沒填備註
-                    if (fail > 0 && note.trim() === "") {
-                        missingNoteItems.push(idx);
-                        hasItemError = true;
-                    }
+                    if (sum < 10) { insufficientItems.push(idx); hasItemError = true; }
+                    if (fail > 0 && note.trim() === "") { missingNoteItems.push(idx); hasItemError = true; }
                     
-                    // 如果這題有錯，把元素存起來準備閃紅框
-                    if (hasItemError) {
-                        errorElements.push(item);
-                    }
+                    if (hasItemError) errorElements.push(item);
                 }
 
                 payload.details.push({
@@ -433,46 +486,31 @@
                 });
             });
 
-            // 🌟 如果有收集到錯誤，統整報錯訊息
+            // 報錯統整與滑動提示
             if (errorElements.length > 0) {
                 let errorMessage = "";
-                
-                if (insufficientItems.length > 0) {
-                    errorMessage += `🚨 觀察樣本數不足！\n項目：第 ${insufficientItems.join('、')} 項\n(規定：遵守 + 未遵守必須 ≥ 10 次，若無此情境請勾選 N/A)\n\n`;
-                }
-                
-                if (missingNoteItems.length > 0) {
-                    errorMessage += `🚨 違規未舉證！\n項目：第 ${missingNoteItems.join('、')} 項\n(發生未遵守情形，請務必填寫下方備註)\n`;
-                }
+                if (insufficientItems.length > 0) errorMessage += `🚨 觀察樣本數不足！\n項目：第 ${insufficientItems.join('、')} 項\n(規定：遵守 + 未遵守必須 ≥ 10 次，若無此情境請勾選 N/A)\n\n`;
+                if (missingNoteItems.length > 0) errorMessage += `🚨 違規未舉證！\n項目：第 ${missingNoteItems.join('、')} 項\n(發生未遵守情形，請務必填寫下方備註)\n`;
 
                 alert(errorMessage.trim());
                 
-                // 讓所有有錯誤的題目一起閃爍紅框
                 errorElements.forEach(el => {
                     el.style.border = "4px solid #dc3545";
                     el.style.boxShadow = "0 0 15px rgba(220, 53, 69, 0.5)";
-                    setTimeout(() => {
-                        el.style.border = "";
-                        el.style.boxShadow = "";
-                    }, 3000);
+                    setTimeout(() => { el.style.border = ""; el.style.boxShadow = ""; }, 3000);
                 });
 
-                // 自動滑動到「第一個」發生錯誤的題目
                 setTimeout(() => {
                     let firstErrorElement = errorElements[0];
-                    try {
-                        firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    } catch (e) {
-                        firstErrorElement.scrollIntoView(); 
-                    }
+                    try { firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' }); } 
+                    catch (e) { firstErrorElement.scrollIntoView(); }
                 }, 150); 
-                
-                return; // 終止送出
+                return; 
             }
 
-            // 若全部檢查通過，開始寫入資料
+            // 🌟 開始送出或寫入暫存
             this.disabled = true;
-            this.textContent = "資料寫入資料庫中，請稍候...";
+            this.textContent = "資料寫入中，請稍候...";
 
             try {
                 const response = await fetch(API_URL, { method: "POST", body: JSON.stringify(payload) });
@@ -487,9 +525,10 @@
                     this.textContent = "確認無誤，送出稽核單";
                 }
             } catch (error) {
-                alert("傳送發生錯誤，請檢查網路連線。");
-                this.disabled = false;
-                this.textContent = "確認無誤，送出稽核單";
+                // 🌟 核心離線機制：只要拋出錯誤 (無網路)，就直接寫入 localStorage
+                saveOfflineData(payload);
+                alert("📡 傳送失敗：目前網路連線不穩或無訊號。\n\n⚠️ 資料已為您【安全暫存於手機中】！\n請您於回到有網路的地方時，再次開啟此網頁，點擊畫面上方的「立即上傳」按鈕即可補傳送。");
+                window.location.reload(); // 重整網頁，將表單清空讓人員可以繼續下一筆查核
             }
         });
     </script>
