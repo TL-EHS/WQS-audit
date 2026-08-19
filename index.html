@@ -368,10 +368,22 @@
             // 基本資料防呆
             if (!payload.auditorName || !payload.auditorObsLevel || !payload.observedCompany || !payload.observedDept || !payload.location || !payload.operationType) {
                 alert("請確認上方【1. 稽核員身分】與【2. 觀察目標】所有欄位皆已選妥！");
+                
+                // 🌟 關鍵修正 1：解除按鈕焦點，防止瀏覽器強制把畫面往下拉
+                document.getElementById('submitBtn').blur();
+                
+                // 🌟 關鍵修正 2：精準抓取最上方的標題元素進行滑動
                 setTimeout(() => {
-                    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } 
-                    catch(e) { window.scrollTo(0, 0); }
+                    const topTitle = document.querySelector('h3'); // 抓取「台北港作業安全行為觀察」標題
+                    if (topTitle) {
+                        try { 
+                            topTitle.scrollIntoView({ behavior: 'smooth', block: 'start' }); 
+                        } catch(e) { 
+                            topTitle.scrollIntoView(); 
+                        }
+                    }
                 }, 150);
+                
                 return;
             }
 
